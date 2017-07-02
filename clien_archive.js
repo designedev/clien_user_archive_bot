@@ -6,24 +6,31 @@ let superagent = require('superagent');
 let schedule = require('node-schedule');
 let sqlite3 = require('sqlite3');
 
+let telegram = require('telegram-bot-api');
+
 //set request to save cookies.
 var db = new sqlite3.Database('./db/user.db');
-var j = request.jar()
-var cookie_saved_request = request.defaults({jar:j})
+//var j = request.jar()
+var cookie_saved_request = null; //request.defaults({jar:j})
 
 
 //functions start.
 
 function work(user_id, password) {
+	var j = request.jar()
+	cookie_saved_request = request.defaults({jar:j})
+
     cookie_saved_request({
         method: 'POST',
         url: 'https://www.clien.net/cs2/bbs/login_check.php',
+		timeout: 10000,
         form: {
             mb_id: user_id,
             mb_password: password
         }
     }, function(err, response, body) {
         if(err) {
+			console.log(`[ERROR_ON_LOGIN] error occured on processing [${user_id}]`);
             console.log(err);
         }
         else {
@@ -46,36 +53,39 @@ function work(user_id, password) {
 }
 
 function findAndArchive(target_user_id) {
-	cookie_saved_request({
+	CLIEN_URL_PREFIX = "https://www.clien.net";
+	request({
 		method: 'GET',
-        //url: 'http://www.clien.net/cs2/bbs/board.php?bo_table=park&sca=&sfl=mb_id%2C1&stx=${user_id}&x=0&y=0',
-        url: 'http://www.clien.net/cs2/bbs/board.php?bo_table=park&sca=&sfl=mb_id%2C0&stx=' + target_user_id + '&x=0&y=0',
-        headers: {
-        	'Referer': 'http://www.clien.net/cs2/bbs/board.php?bo_table=park&sca=&sfl=mb_id%2C1&stx=' + target_user_id + '&x=0&y=0'
-        		}
+        //url: 'https://www.clien.net/service/board/park?sk=id&sv=alf74',
+        url: 'https://www.clien.net/service/board/park?sk=id&sv=' + target_user_id,
+		timeout: 10000
         }, function(err, response, body) {
-			if (err) return console.error(err);
-			$ = cheerio.load(body);
-			console.log("==================================================");
-			console.log(`get all article of [${target_user_id}] wrote.`);
-			console.log("==================================================");
-			$('tr.mytr').each(function() {
-				var subject = $('td.post_subject', this);
-                var title = subject.text();
-				if(title.startsWith('-차단하신')) {
-					console.log("!!!!! IGNORED ARTICLE. PASS !!!!!");
-				}
-				else {
-                var article_no = $('a', subject).attr('href').split('&')[0].split('≀')[1].split('=')[1];
-                var article_link = `http://www.clien.net/cs2/bbs/board.php?bo_table=park&wr_id=${article_no}`;
-                var user = $('td.post_name a', this).attr('title');
-                var user_id = user.split(']')[0].replace('[','');
-                var user_name = user.split(']')[1];
- 
-                var created_at = $('span',$('td', this).eq(3)).attr('title');
-                checkExistAndSave(target_user_id, user_id, user_name, article_no, title, article_link, created_at);
-				}
-			});
+			if (err) {
+				console.log(`[ERROR_GET_ARTICLES] error occured on processing [${target_user_id}]`);
+				console.error(err.code);
+			}
+			else {
+				$ = cheerio.load(body);
+				//console.log("==================================================");
+				console.log(`get all article of [${target_user_id}] ..`);
+				//console.log("==================================================");
+				var post_list = $('div.post-list');
+				var items = $('div.item', post_list)
+				items.each(function() {
+					//article anchor.
+					user_id = target_user_id;
+					var anchor = $('a.list-subject', this);
+
+					var article_link = CLIEN_URL_PREFIX + anchor.attr('href')
+					var title = anchor.text().trim();
+					var article_no = anchor.attr('href').split("/")[4].split("?")[0]
+					var user_nick = $('a.nick', this).text().trim();
+					var timestamp = $('span.timestamp', this).text().trim();
+					console.log(`(${article_no})${title}[${user_nick}] - ${timestamp}`);
+					console.log(article_link);
+					checkExistAndSave(target_user_id, user_id, user_nick, article_no, title, article_link, timestamp);
+				});
+			}
 		});
 }
 
@@ -96,11 +106,10 @@ function checkExistAndSave(target_user_id, user_id, user_name, article_no, title
     var preparedStmt = "SELECT USER_ID FROM SENT_USER WHERE ARTICLE_NO = " + article_no + " AND TARGET_ID = '" + target_user_id + "'";
     db.all(preparedStmt, function(err, rows) {
 		if(err) {
-			console.log(preparedStmt);
 			console.log(err);
 		}
         else if(rows && rows.length == 0) {
-            console.log(`[no : ${article_no}], [title : ${title}] is not saved. archive and save this article..`);
+            //console.log(`[no : ${article_no}], [title : ${title}] is not saved. archive and save this article..`);
             archive.save(url).then(function(result) {
                 var shorten = result.shortUrl;
                 console.log(`[!NEW!]   user [${target_user_id}] written Article no(${article_no}),  title : (${title}) is now archived(${shorten}). saving this article..`);
@@ -108,7 +117,7 @@ function checkExistAndSave(target_user_id, user_id, user_name, article_no, title
             });
         }
         else {
-            console.log(`[!EXIST!] user [${target_user_id}] written Article no(${article_no}), title : (${title}) is already saved. skip this article..`);
+            //console.log(`[!EXIST!] user [${target_user_id}] written Article no(${article_no}), title : (${title}) is already saved. skip this article..`);
         }
     });
 }
@@ -121,7 +130,7 @@ function add_blacklist(user_id) {
 
 function get_blacklist() {
 	return new Promise(function(resolve, reject) {
-		var statement = "SELECT USER_ID FROM BLACKLIST_USER ORDER BY ID DESC";
+		var statement = "SELECT ID, USER_ID FROM BLACKLIST_USER ORDER BY ID DESC";
 		db.all(statement, function(err, rows) {
 			if(err) {
 				reject(new Error(err));
@@ -133,6 +142,21 @@ function get_blacklist() {
 	});
 }
 
+function get_articles(user_id) {
+	return new Promise(function(resolve, reject) {
+		var statement = "SELECT * FROM SENT_USER WHERE TARGET_ID = '" + user_id + "' ORDER BY CREATED_AT DESC"; 
+		db.all(statement, function(err, rows) {
+			if(err) {
+				reject(new Error(err));	
+			}
+			else {
+				resolve(rows);
+			}
+		});
+	});
+
+}
+
 
 
 
@@ -141,7 +165,7 @@ function init() {
 }
 function schedule_go(user_id, password) {
     var j = schedule.scheduleJob('*/1 * * * *', function(){
-        console.log("go to work");
+        console.log("check if exists new article and comment..");
         work(user_id, password);
     });
 }
@@ -158,4 +182,3 @@ function exec() {
 }
 
 exec();
-
