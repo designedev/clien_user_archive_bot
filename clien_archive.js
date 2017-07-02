@@ -5,39 +5,14 @@ let archive = require('archive.is');
 let superagent = require('superagent');
 let schedule = require('node-schedule');
 let sqlite3 = require('sqlite3');
-
 let telegram = require('telegram-bot-api');
-
-//set request to save cookies.
 var db = new sqlite3.Database('./db/user.db');
-//var j = request.jar()
-var cookie_saved_request = null; //request.defaults({jar:j})
 
 
 //functions start.
 
-function work(user_id, password) {
-	var j = request.jar()
-	cookie_saved_request = request.defaults({jar:j})
-
-    cookie_saved_request({
-        method: 'POST',
-        url: 'https://www.clien.net/cs2/bbs/login_check.php',
-		timeout: 10000,
-        form: {
-            mb_id: user_id,
-            mb_password: password
-        }
-    }, function(err, response, body) {
-        if(err) {
-			console.log(`[ERROR_ON_LOGIN] error occured on processing [${user_id}]`);
-            console.log(err);
-        }
-        else {
-			//get blacklist user ids..
-			console.log("login complete. get separated user id");
-			console.log(body);
-			get_blacklist().then(rows => {
+function work() {
+	get_blacklist().then(rows => {
 				if(rows.length == 0) {
 					console.log("there is no blacklist user. exit.");
 				}
@@ -48,8 +23,7 @@ function work(user_id, password) {
 				}
 			})
 			.catch(err => console.log(err));
-        }
-    })
+
 }
 
 function findAndArchive(target_user_id) {
@@ -170,15 +144,9 @@ function schedule_go(user_id, password) {
     });
 }
 
-function exec() {
-	if(process.argv.length  < 4 ) {
-		console.log(`USAGE : node filename USER_ID PASSWORD`);
-		return;
-	}
-	let user_id = process.argv[2];
-	let password = process.argv[3];
+function exec() {	
 	init();
-	schedule_go(user_id, password);
+	schedule_go();
 }
 
 exec();
