@@ -41,7 +41,7 @@ function findAndArchive(target_user_id) {
 			else {
 				$ = cheerio.load(body);
 				//console.log("==================================================");
-				console.log(`get all article of [${target_user_id}] ..`);
+				//console.log(`get all article of [${target_user_id}] ..`);
 				//console.log("==================================================");
 				var post_list = $('div.post-list');
 				var items = $('div.item', post_list)
@@ -55,8 +55,8 @@ function findAndArchive(target_user_id) {
 					var article_no = anchor.attr('href').split("/")[4].split("?")[0]
 					var user_nick = $('a.nick', this).text().trim();
 					var timestamp = $('span.timestamp', this).text().trim();
-					console.log(`(${article_no})${title}[${user_nick}] - ${timestamp}`);
-					console.log(article_link);
+					//console.log(`(${article_no})${title}[${user_nick}] - ${timestamp}`);
+					//console.log(article_link);
 					checkExistAndSave(target_user_id, user_id, user_nick, article_no, title, article_link, timestamp);
 				});
 			}
@@ -83,7 +83,7 @@ function checkExistAndSave(target_user_id, user_id, user_name, article_no, title
 			console.log(err);
 		}
         else if(rows && rows.length == 0) {
-            //console.log(`[no : ${article_no}], [title : ${title}] is not saved. archive and save this article..`);
+            console.log(`${user_name}(${target_user_id}) [${article_no}] [${title}] is not saved. archive and save this article..`);
             archive.save(url).then(function(result) {
                 var shorten = result.shortUrl;
                 console.log(`[!NEW!]   user [${target_user_id}] written Article no(${article_no}),  title : (${title}) is now archived(${shorten}). saving this article..`);
@@ -139,8 +139,10 @@ function init() {
 }
 function schedule_go(user_id, password) {
     var j = schedule.scheduleJob('*/1 * * * *', function(){
-        console.log("check if exists new article and comment..");
-        work(user_id, password);
+		date = new Date();
+		
+        console.log(`${date.toLocaleDateString("ko-KR")} ${date.toLocaleTimeString('ko-KR')} ::: check if exists new article and comment..`);
+        work();
     });
 }
 
